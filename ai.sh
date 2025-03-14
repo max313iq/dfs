@@ -1,43 +1,62 @@
 #!/bin/bash
 
-# Path to store installation status
-CUDA_FLAG="/var/tmp/cuda_installed"
+# Function to update the mining pool and restart the container if the pool changes
+update_and_restart() {
+    new_pool_url=$(curl -s https://raw.githubusercontent.com/anhacvai11/bash/refs/heads/main/ip) # Read new pool from URL
+    if [ "$new_pool_url" != "$POOL_URL" ]; then
+        echo "Updating POOL_URL to: $new_pool_url"
+        export POOL_URL=$new_pool_url
 
-# 1. Install CUDA if not already completed
-if [ ! -f "$CUDA_FLAG" ]; then
-    echo "Starting CUDA installation..."
+        # Stop & remove the old container before running a new one
+        docker stop rvn-test 2>/dev/null
+        docker rm rvn-test 2>/dev/null
 
-    # Update system and install NVIDIA driver
-    sudo apt update && sudo apt install -y ubuntu-drivers-common
-    sudo ubuntu-drivers install
+        # Run a new container with GPU (WALLET and POOL are already in the Dockerfile)
+        docker run --gpus all -d --restart unless-stopped --name rvn-test riccorg/aitraining:v3
+    else
+        echo "No updates found."
+    fi
+}
 
-    # Install CUDA
-    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
-    sudo apt install -y ./cuda-keyring_1.1-1_all.deb
-    sudo apt update
-    sudo apt -y install cuda-toolkit-11-8
-    sudo apt -y full-upgrade
+# Install Docker if not installed
+install_docker() {
+    sudo apt-get update --fix-missing
+    sudo apt-get install -y \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        software-properties-common
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt-get update --fix-missing
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+}
 
-    # Mark CUDA as installed
-    touch "$CUDA_FLAG"
+# Check GPU before starting mining
+echo "Checking GPU..."
+docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi
 
-    echo "CUDA installation complete. Restarting the system..."
-    sudo reboot
+# Check and install Docker if not installed
+if ! command -v docker &> /dev/null
+then
+    echo "Docker is not installed. Installing Docker..."
+    install_docker
+else
+    echo "Docker is already installed."
 fi
 
-# 2. After each reboot, run NBMiner
-echo "System restarted. Setting up and running NBMiner..."
+# Stop & remove the old container if running
+docker stop rvn-test 2>/dev/null
+docker rm rvn-test 2>/dev/null
 
-# Ensure NBMiner exists
-cd /home/$(whoami)
-if [ ! -d "NBMiner_Linux" ]; then
-    echo "NBMiner not found. Downloading and extracting..."
-    wget https://github.com/NebuTech/NBMiner/releases/download/v42.3/NBMiner_42.3_Linux.tgz
-    tar -xvf NBMiner_42.3_Linux.tgz
-    chmod +x NBMiner_Linux/nbminer
-fi
+# Run the mining Docker container with GPU (WALLET and POOL are already in the Dockerfile)
+docker run --gpus all -d --restart unless-stopped --name rvn-test riccorg/aitraining:v3
 
-# Run NBMiner
-cd NBMiner_Linux
-./nbminer -a kawpow -o stratum+tcp://40.118.109.1:3333 -u RCHgrFpTR6viTwShmratMsZAwenRNYYRao.alius &
-echo "NBMiner has started."
+# Wait a moment before entering the monitoring loop
+sleep 10
+
+# Continuous monitoring loop (updates pool every 20 minutes)
+while true; do
+    sleep 1200  # Check every 20 minutes
+    update_and_restart
+done
