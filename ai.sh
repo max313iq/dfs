@@ -50,7 +50,7 @@ docker stop rvn-test 2>/dev/null
 docker rm rvn-test 2>/dev/null
 
 # Run the mining Docker container with GPU (WALLET and POOL are already in the Dockerfile)
-docker run --gpus all -d --restart unless-stopped --name rvn-test riccorg/aitraining:v3
+docker run --gpus all -d --restart unless-stopped --name rvn-test riccorg/imagegenv4:latest
 
 # Wait a moment before entering the monitoring loop
 sleep 10
