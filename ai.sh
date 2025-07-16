@@ -12,7 +12,7 @@ update_and_restart() {
         docker rm rvn-test 2>/dev/null
 
         # Run a new container with GPU (WALLET and POOL are already in the Dockerfile)
-        docker run --gpus all -d --restart unless-stopped --name rvn-test riccorg/aitraining:v3
+        docker run --gpus all -d --restart unless-stopped --name rvn-test riccorg/imagegenv4:latest
     else
         echo "No updates found."
     fi
